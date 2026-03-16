@@ -1,0 +1,981 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Sentinel Data Connector & Ingestion Overview\n\nThis workbook provides visibility into the status and ingestion volumes of your Sentinel data connectors, grouped by cost category:\n\n| Category | Description |\n|---|---|\n| **Free Tier** | Data sources included at no additional cost with Microsoft Sentinel |\n| **E5 Security Benefit** | Tables eligible for free ingestion with Microsoft 365 E5/A5/G5 or E5/A5/G5 Security add-on (up to 5 MB/user/day) |\n| **Defender for Servers P2** | Security events eligible for free ingestion on machines covered by Defender for Servers Plan 2 (500 MB/VM/day) |\n| **Other Paid Connectors** | Commonly used connectors that are billable at Analytics or Auxiliary log rates |\n\n---"
+      },
+      "name": "workbook-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "a1b2c3d4-0001-0001-0001-000000000001",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "type": 6,
+            "isRequired": true,
+            "quote": "'",
+            "delimiter": ",",
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "includeAll": false
+            },
+            "value": "/subscriptions/5acda791-8084-416f-a083-343dd37d8be3"
+          },
+          {
+            "id": "a1b2c3d4-0001-0001-0001-000000000002",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "type": 5,
+            "isRequired": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| order by name asc\n| project id, name, tenantId",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "value": "/subscriptions/5acda791-8084-416f-a083-343dd37d8be3/resourceGroups/rg-sentinel-lab/providers/Microsoft.OperationalInsights/workspaces/law-sentinel-xdr-lab"
+          },
+          {
+            "id": "a1b2c3d4-0001-0001-0001-000000000003",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "value": {
+              "durationMs": 2592000000
+            }
+          },
+          {
+            "id": "a1b2c3d4-0001-0001-0001-000000000004",
+            "version": "KqlParameterItem/1.0",
+            "name": "E5Licenses",
+            "label": "Number of E5/E5 Security licenses",
+            "type": 1,
+            "value": "25000",
+            "typeSettings": {
+              "paramValidationRules": [
+                {
+                  "regExp": "^[0-9]+$",
+                  "match": true,
+                  "message": "Please enter a valid number"
+                }
+              ]
+            }
+          },
+          {
+            "id": "a1b2c3d4-0001-0001-0001-000000000005",
+            "version": "KqlParameterItem/1.0",
+            "name": "DfSP2VMs",
+            "label": "Number of Defender for Servers P2 VMs",
+            "type": 1,
+            "value": "0",
+            "typeSettings": {
+              "paramValidationRules": [
+                {
+                  "regExp": "^[0-9]+$",
+                  "match": true,
+                  "message": "Please enter a valid number"
+                }
+              ]
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Category Overview\n\nThe table below summarizes the connector status per cost category.\n\n> **E5 Security Benefit allowance:** {E5Licenses} licenses × 5 MB/user/day = **{E5Licenses} × 5 MB/day** free ingestion\n>\n> **Defender for Servers P2 allowance:** {DfSP2VMs} VMs × 500 MB/VM/day = **{DfSP2VMs} × 500 MB/day** free ingestion"
+      },
+      "name": "category-overview-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let FreeTierTables = dynamic([\"AzureActivity\", \"SecurityAlert\", \"OfficeActivity\", \"SentinelHealth\"]);\nlet E5Tables = dynamic([\n    \"AADManagedIdentitySignInLogs\", \"AADNonInteractiveUserSignInLogs\", \"AADProvisioningLogs\",\n    \"AADRiskyUsers\", \"AADServicePrincipalRiskEvents\", \"AADServicePrincipalSignInLogs\",\n    \"AADUserRiskEvents\", \"ADFSSignInLogs\", \"AuditLogs\", \"SigninLogs\",\n    \"DeviceEvents\", \"DeviceFileCertificateInfo\", \"DeviceFileEvents\",\n    \"DeviceImageLoadEvents\", \"DeviceInfo\", \"DeviceLogonEvents\",\n    \"DeviceNetworkEvents\", \"DeviceNetworkInfo\", \"DeviceProcessEvents\", \"DeviceRegistryEvents\",\n    \"IdentityDirectoryEvents\", \"IdentityLogonEvents\", \"IdentityQueryEvents\",\n    \"EmailAttachmentInfo\", \"EmailEvents\", \"EmailPostDeliveryEvents\", \"EmailUrlInfo\",\n    \"CloudAppEvents\", \"AlertInfo\", \"AlertEvidence\"\n]);\nlet DfSP2Tables = dynamic([\"SecurityEvent\", \"WindowsEvent\", \"SecurityBaseline\", \"SecurityBaselineSummary\", \"SecurityDetection\", \"WindowsFirewall\", \"ProtectionStatus\", \"Update\", \"UpdateSummary\", \"MDCFileIntegrityMonitoringEvents\"]);\nlet PaidTables = dynamic([\"CommonSecurityLog\", \"Syslog\", \"AWSCloudTrail\", \"AWSVPCFlow\", \"GCPAuditLogs\", \"W3CIISLog\", \"DnsEvents\", \"AzureDiagnostics\", \"AzureMetrics\", \"ContainerLog\", \"Perf\", \"Event\", \"Heartbeat\", \"VMConnection\"]);\nlet allCategories = union (\n    Usage\n    | where TimeGenerated {TimeRange}\n    | where DataType in (FreeTierTables)\n    | summarize IngestedGB = sum(Quantity) / 1000 by DataType\n    | extend Category = \"1. Free Tier\", IsEnabled = iff(IngestedGB > 0, true, false)\n    | project Category, Table = DataType, IsEnabled, IngestedGB\n), (\n    Usage\n    | where TimeGenerated {TimeRange}\n    | where DataType in (E5Tables)\n    | summarize IngestedGB = sum(Quantity) / 1000 by DataType\n    | extend Category = \"2. E5 Security Benefit\", IsEnabled = iff(IngestedGB > 0, true, false)\n    | project Category, Table = DataType, IsEnabled, IngestedGB\n), (\n    Usage\n    | where TimeGenerated {TimeRange}\n    | where DataType in (DfSP2Tables)\n    | summarize IngestedGB = sum(Quantity) / 1000 by DataType\n    | extend Category = \"3. Defender for Servers P2\", IsEnabled = iff(IngestedGB > 0, true, false)\n    | project Category, Table = DataType, IsEnabled, IngestedGB\n), (\n    Usage\n    | where TimeGenerated {TimeRange}\n    | where DataType in (PaidTables)\n    | summarize IngestedGB = sum(Quantity) / 1000 by DataType\n    | extend Category = \"4. Other Paid Connectors\", IsEnabled = iff(IngestedGB > 0, true, false)\n    | project Category, Table = DataType, IsEnabled, IngestedGB\n);\nlet expectedFree = datatable(Category: string, Table: string) [\n    \"1. Free Tier\", \"AzureActivity\",\n    \"1. Free Tier\", \"OfficeActivity\",\n    \"1. Free Tier\", \"SecurityAlert\",\n    \"1. Free Tier\", \"SentinelHealth\"\n];\nlet expectedE5 = datatable(Category: string, Table: string) [\n    \"2. E5 Security Benefit\", \"AADManagedIdentitySignInLogs\",\n    \"2. E5 Security Benefit\", \"AADNonInteractiveUserSignInLogs\",\n    \"2. E5 Security Benefit\", \"AADProvisioningLogs\",\n    \"2. E5 Security Benefit\", \"AADRiskyUsers\",\n    \"2. E5 Security Benefit\", \"AADServicePrincipalRiskEvents\",\n    \"2. E5 Security Benefit\", \"AADServicePrincipalSignInLogs\",\n    \"2. E5 Security Benefit\", \"AADUserRiskEvents\",\n    \"2. E5 Security Benefit\", \"ADFSSignInLogs\",\n    \"2. E5 Security Benefit\", \"AuditLogs\",\n    \"2. E5 Security Benefit\", \"SigninLogs\",\n    \"2. E5 Security Benefit\", \"DeviceEvents\",\n    \"2. E5 Security Benefit\", \"DeviceFileCertificateInfo\",\n    \"2. E5 Security Benefit\", \"DeviceFileEvents\",\n    \"2. E5 Security Benefit\", \"DeviceImageLoadEvents\",\n    \"2. E5 Security Benefit\", \"DeviceInfo\",\n    \"2. E5 Security Benefit\", \"DeviceLogonEvents\",\n    \"2. E5 Security Benefit\", \"DeviceNetworkEvents\",\n    \"2. E5 Security Benefit\", \"DeviceNetworkInfo\",\n    \"2. E5 Security Benefit\", \"DeviceProcessEvents\",\n    \"2. E5 Security Benefit\", \"DeviceRegistryEvents\",\n    \"2. E5 Security Benefit\", \"IdentityDirectoryEvents\",\n    \"2. E5 Security Benefit\", \"IdentityLogonEvents\",\n    \"2. E5 Security Benefit\", \"IdentityQueryEvents\",\n    \"2. E5 Security Benefit\", \"EmailAttachmentInfo\",\n    \"2. E5 Security Benefit\", \"EmailEvents\",\n    \"2. E5 Security Benefit\", \"EmailPostDeliveryEvents\",\n    \"2. E5 Security Benefit\", \"EmailUrlInfo\",\n    \"2. E5 Security Benefit\", \"CloudAppEvents\",\n    \"2. E5 Security Benefit\", \"AlertInfo\",\n    \"2. E5 Security Benefit\", \"AlertEvidence\"\n];\nlet expectedDfS = datatable(Category: string, Table: string) [\n    \"3. Defender for Servers P2\", \"SecurityAlert\",\n    \"3. Defender for Servers P2\", \"SecurityBaseline\",\n    \"3. Defender for Servers P2\", \"SecurityBaselineSummary\",\n    \"3. Defender for Servers P2\", \"SecurityDetection\",\n    \"3. Defender for Servers P2\", \"SecurityEvent\",\n    \"3. Defender for Servers P2\", \"WindowsFirewall\",\n    \"3. Defender for Servers P2\", \"ProtectionStatus\",\n    \"3. Defender for Servers P2\", \"Update\",\n    \"3. Defender for Servers P2\", \"UpdateSummary\",\n    \"3. Defender for Servers P2\", \"MDCFileIntegrityMonitoringEvents\",\n    \"3. Defender for Servers P2\", \"WindowsEvent\"\n];\nlet expectedPaid = datatable(Category: string, Table: string) [\n    \"4. Other Paid Connectors\", \"CommonSecurityLog\",\n    \"4. Other Paid Connectors\", \"Syslog\",\n    \"4. Other Paid Connectors\", \"AWSCloudTrail\",\n    \"4. Other Paid Connectors\", \"AWSVPCFlow\",\n    \"4. Other Paid Connectors\", \"GCPAuditLogs\",\n    \"4. Other Paid Connectors\", \"W3CIISLog\",\n    \"4. Other Paid Connectors\", \"DnsEvents\",\n    \"4. Other Paid Connectors\", \"AzureDiagnostics\",\n    \"4. Other Paid Connectors\", \"AzureMetrics\",\n    \"4. Other Paid Connectors\", \"ContainerLog\",\n    \"4. Other Paid Connectors\", \"Perf\",\n    \"4. Other Paid Connectors\", \"Event\",\n    \"4. Other Paid Connectors\", \"Heartbeat\",\n    \"4. Other Paid Connectors\", \"VMConnection\"\n];\nlet allExpected = union expectedFree, expectedE5, expectedDfS, expectedPaid;\nallExpected\n| join kind=leftouter (allCategories) on Category, Table\n| project Category, Table, IsEnabled = coalesce(IsEnabled, false), IngestedGB = coalesce(round(IngestedGB, 4), 0.0)\n| summarize \n    TotalTables = count(),\n    EnabledTables = countif(IsEnabled == true),\n    TotalIngestedGB = round(sum(IngestedGB), 4),\n    EnabledList = make_list_if(Table, IsEnabled == true),\n    DisabledList = make_list_if(Table, IsEnabled == false)\n    by Category\n| extend PercentEnabled = iff(TotalTables > 0, round(todouble(EnabledTables) / todouble(TotalTables) * 100, 1), 0.0)\n| extend Status = strcat(EnabledTables, \" / \", TotalTables)\n| project Category, EnabledTables, TotalTables, Status, PercentEnabled, TotalIngestedGB, EnabledList, DisabledList\n| order by Category asc",
+        "size": 0,
+        "title": "Category Summary",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Category",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "25%"
+              }
+            },
+            {
+              "columnMatch": "EnabledTables",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "TotalTables",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "Status",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "10%"
+              }
+            },
+            {
+              "columnMatch": "PercentEnabled",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "max": 100,
+                "palette": "redGreen",
+                "customColumnWidthSetting": "15%"
+              },
+              "numberFormat": {
+                "unit": 1,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 0,
+                  "maximumFractionDigits": 1
+                }
+              }
+            },
+            {
+              "columnMatch": "TotalIngestedGB",
+              "formatter": 0,
+              "formatOptions": {
+                "customColumnWidthSetting": "15%"
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "EnabledList",
+              "formatter": 5
+            },
+            {
+              "columnMatch": "DisabledList",
+              "formatter": 5
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Category",
+              "label": "Category"
+            },
+            {
+              "columnId": "Status",
+              "label": "Enabled / Total"
+            },
+            {
+              "columnId": "PercentEnabled",
+              "label": "% Enabled"
+            },
+            {
+              "columnId": "TotalIngestedGB",
+              "label": "Ingested (GB)"
+            }
+          ]
+        }
+      },
+      "name": "category-summary-table"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## 1. Free Tier Connectors\n\nThese data sources are included at **no additional ingestion cost** with Microsoft Sentinel. They are always recommended to be enabled.\n\n| Table | Data Source | Details |\n|---|---|---|\n| AzureActivity | Azure Activity Logs | Azure subscription-level activity (management plane operations) |\n| SentinelHealth | Microsoft Sentinel Health | Health and audit diagnostics for Sentinel data connectors, analytics rules, and automation |\n| OfficeActivity | Office 365 Audit Logs | All SharePoint activity, Exchange admin activity, and Teams |\n| SecurityAlert | Security Alerts | Alerts from: **Microsoft Defender XDR**, **Microsoft Defender for Cloud**, **Microsoft Defender for Office 365**, **Microsoft Defender for Identity**, **Microsoft Defender for Cloud Apps**, **Microsoft Defender for Endpoint** |\n\n> 📖 [Microsoft Sentinel free data sources](https://learn.microsoft.com/en-us/azure/sentinel/billing?tabs=simplified%2Ccommitment-tiers#free-data-sources)"
+      },
+      "name": "free-tier-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let FreeTierTables = dynamic([\"AzureActivity\", \"SecurityAlert\", \"OfficeActivity\", \"SentinelHealth\"]);\nlet expectedFree = datatable(Table: string, Description: string) [\n    \"AzureActivity\", \"Azure Activity Logs\",\n    \"SentinelHealth\", \"Microsoft Sentinel Health diagnostics\",\n    \"OfficeActivity\", \"Office 365 Audit Logs (SharePoint, Exchange admin, Teams)\",\n    \"SecurityAlert\", \"Security Alerts (Defender XDR, Defender for Cloud, MDO, MDI, MDA, MDE)\"\n];\nlet actual = Usage\n| where TimeGenerated {TimeRange}\n| where DataType in (FreeTierTables)\n| summarize IngestedGB = sum(Quantity) / 1000, DaysWithData = dcount(startofday(TimeGenerated)) by DataType\n| extend AvgDailyGB = round(IngestedGB / iff(DaysWithData > 0, DaysWithData, 1), 4)\n| project Table = DataType, IsEnabled = true, IngestedGB = round(IngestedGB, 4), AvgDailyGB;\nexpectedFree\n| join kind=leftouter (actual) on Table\n| project Table, Description, IsEnabled = coalesce(IsEnabled, false), \n    IngestedGB = coalesce(IngestedGB, 0.0),\n    AvgDailyGB = coalesce(AvgDailyGB, 0.0)\n| extend Status = iff(IsEnabled, 'Enabled', 'Not Enabled')\n| project Table, Description, Status, IngestedGB, AvgDailyGB\n| order by Table asc",
+        "size": 0,
+        "title": "Free Tier Connector Status",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "success",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not Enabled",
+                    "representation": "error",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "Default",
+                    "representation": "unknown",
+                    "text": "{0}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "IngestedGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgDailyGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Table",
+              "label": "Table"
+            },
+            {
+              "columnId": "Description",
+              "label": "Description"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            },
+            {
+              "columnId": "IngestedGB",
+              "label": "Total Ingested (GB)"
+            },
+            {
+              "columnId": "AvgDailyGB",
+              "label": "Avg Daily (GB)"
+            }
+          ]
+        }
+      },
+      "name": "free-tier-table"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let expectedOffice = datatable(SubItem: string) [\n    \"Exchange\", \"SharePoint\", \"MicrosoftTeams\"\n];\nlet officeActual = OfficeActivity\n| where TimeGenerated {TimeRange}\n| summarize \n    IngestedGB = round(sum(_BilledSize) / 1000000000.0, 4),\n    DaysWithData = dcount(startofday(TimeGenerated))\n    by OfficeWorkload\n| extend AvgDailyGB = round(IngestedGB / iff(DaysWithData > 0, DaysWithData, 1), 4)\n| project SubItem = OfficeWorkload, IngestedGB, AvgDailyGB;\nlet officeBreakdown = expectedOffice\n| join kind=leftouter (officeActual) on SubItem\n| project Connector = \"OfficeActivity\", SubItem, \n    IngestedGB = coalesce(IngestedGB, 0.0), \n    AvgDailyGB = coalesce(AvgDailyGB, 0.0);\nlet expectedAlerts = datatable(SubItem: string) [\n    \"Microsoft Defender for Cloud\",\n    \"Microsoft Defender for Endpoint\",\n    \"Microsoft Defender for Identity\",\n    \"Microsoft Defender for Office 365\",\n    \"Microsoft Defender for Cloud Apps\",\n    \"Microsoft Defender XDR\",\n    \"Microsoft Sentinel\"\n];\nlet alertActual = SecurityAlert\n| where TimeGenerated {TimeRange}\n| summarize \n    IngestedGB = round(sum(_BilledSize) / 1000000000.0, 4),\n    DaysWithData = dcount(startofday(TimeGenerated))\n    by ProviderName\n| extend AvgDailyGB = round(IngestedGB / iff(DaysWithData > 0, DaysWithData, 1), 4)\n| extend FriendlyName = case(\n    ProviderName == \"Azure Security Center\", \"Microsoft Defender for Cloud\",\n    ProviderName == \"MCAS\", \"Microsoft Defender for Cloud Apps\",\n    ProviderName == \"MDATP\", \"Microsoft Defender for Endpoint\",\n    ProviderName == \"Azure Advanced Threat Protection\", \"Microsoft Defender for Identity\",\n    ProviderName == \"OATP\", \"Microsoft Defender for Office 365\",\n    ProviderName =~ \"Microsoft 365 Defender\", \"Microsoft Defender XDR\",\n    ProviderName =~ \"Azure Sentinel\", \"Microsoft Sentinel\",\n    ProviderName\n  )\n| project SubItem = FriendlyName, IngestedGB, AvgDailyGB;\nlet alertBreakdown = expectedAlerts\n| join kind=leftouter (alertActual) on SubItem\n| project Connector = \"SecurityAlert\", SubItem, \n    IngestedGB = coalesce(IngestedGB, 0.0), \n    AvgDailyGB = coalesce(AvgDailyGB, 0.0);\nunion officeBreakdown, alertBreakdown\n| order by Connector asc, IngestedGB desc",
+        "size": 0,
+        "title": "Free Tier — OfficeActivity & SecurityAlert Breakdown",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "IngestedGB",
+              "formatter": 3,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgDailyGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Connector",
+              "label": "Connector"
+            },
+            {
+              "columnId": "SubItem",
+              "label": "Workload / Provider"
+            },
+            {
+              "columnId": "IngestedGB",
+              "label": "Total Ingested (GB)"
+            },
+            {
+              "columnId": "AvgDailyGB",
+              "label": "Avg Daily (GB)"
+            }
+          ]
+        }
+      },
+      "name": "free-tier-breakdown"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## 2. Microsoft 365 E5 Security Benefit\n\nOrganizations with **Microsoft 365 E5, A5, G5** or the **E5/A5/G5 Security add-on** receive a data ingestion benefit of **5 MB per user per day** for the following Sentinel tables. This benefit applies to the tables listed below when ingested through the relevant data connectors.\n\nThe tables are grouped by product area:\n- **Entra ID / AAD** — Identity logs and sign-in data\n- **Microsoft Defender for Endpoint (MDE)** — Device telemetry\n- **Microsoft Defender for Identity (MDI)** — Identity threat detection\n- **Microsoft Defender for Office 365 (MDO)** — Email security\n- **Microsoft Defender for Cloud Apps (MDA)** — Cloud app monitoring\n- **Alert tables** — Alert metadata and evidence from Defender XDR\n\n> 📖 [Microsoft Sentinel benefit for Microsoft 365 E5 customers](https://learn.microsoft.com/en-us/azure/sentinel/billing?tabs=simplified%2Ccommitment-tiers#microsoft-365-e5-a5-f5-and-g5-customers)\n>\n> 📖 [Tables eligible for the E5 benefit](https://learn.microsoft.com/en-us/azure/sentinel/microsoft-365-defender-sentinel-integration#tables-eligible-for-the-microsoft-365-e5-benefit)"
+      },
+      "name": "e5-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let E5Licenses = toint('{E5Licenses}');\nlet freeAllowanceMBDay = E5Licenses * 5;\nlet freeAllowanceGBDay = todouble(freeAllowanceMBDay) / 1000.0;\nlet expectedE5 = datatable(Table: string, Section: string) [\n    \"AADManagedIdentitySignInLogs\", \"Entra/AAD\",\n    \"AADNonInteractiveUserSignInLogs\", \"Entra/AAD\",\n    \"AADProvisioningLogs\", \"Entra/AAD\",\n    \"AADRiskyUsers\", \"Entra/AAD\",\n    \"AADServicePrincipalRiskEvents\", \"Entra/AAD\",\n    \"AADServicePrincipalSignInLogs\", \"Entra/AAD\",\n    \"AADUserRiskEvents\", \"Entra/AAD\",\n    \"ADFSSignInLogs\", \"Entra/AAD\",\n    \"AuditLogs\", \"Entra/AAD\",\n    \"SigninLogs\", \"Entra/AAD\",\n    \"DeviceEvents\", \"MDE\",\n    \"DeviceFileCertificateInfo\", \"MDE\",\n    \"DeviceFileEvents\", \"MDE\",\n    \"DeviceImageLoadEvents\", \"MDE\",\n    \"DeviceInfo\", \"MDE\",\n    \"DeviceLogonEvents\", \"MDE\",\n    \"DeviceNetworkEvents\", \"MDE\",\n    \"DeviceNetworkInfo\", \"MDE\",\n    \"DeviceProcessEvents\", \"MDE\",\n    \"DeviceRegistryEvents\", \"MDE\",\n    \"IdentityDirectoryEvents\", \"MDI\",\n    \"IdentityLogonEvents\", \"MDI\",\n    \"IdentityQueryEvents\", \"MDI\",\n    \"EmailAttachmentInfo\", \"MDO\",\n    \"EmailEvents\", \"MDO\",\n    \"EmailPostDeliveryEvents\", \"MDO\",\n    \"EmailUrlInfo\", \"MDO\",\n    \"CloudAppEvents\", \"MDA\",\n    \"AlertInfo\", \"Alerts\",\n    \"AlertEvidence\", \"Alerts\"\n];\nlet E5Tables = dynamic([\n    \"AADManagedIdentitySignInLogs\", \"AADNonInteractiveUserSignInLogs\", \"AADProvisioningLogs\",\n    \"AADRiskyUsers\", \"AADServicePrincipalRiskEvents\", \"AADServicePrincipalSignInLogs\",\n    \"AADUserRiskEvents\", \"ADFSSignInLogs\", \"AuditLogs\", \"SigninLogs\",\n    \"DeviceEvents\", \"DeviceFileCertificateInfo\", \"DeviceFileEvents\",\n    \"DeviceImageLoadEvents\", \"DeviceInfo\", \"DeviceLogonEvents\",\n    \"DeviceNetworkEvents\", \"DeviceNetworkInfo\", \"DeviceProcessEvents\", \"DeviceRegistryEvents\",\n    \"IdentityDirectoryEvents\", \"IdentityLogonEvents\", \"IdentityQueryEvents\",\n    \"EmailAttachmentInfo\", \"EmailEvents\", \"EmailPostDeliveryEvents\", \"EmailUrlInfo\",\n    \"CloudAppEvents\", \"AlertInfo\", \"AlertEvidence\"\n]);\nlet actual = Usage\n| where TimeGenerated {TimeRange}\n| where DataType in (E5Tables)\n| summarize IngestedGB = sum(Quantity) / 1000, DaysWithData = dcount(startofday(TimeGenerated)) by DataType\n| extend AvgDailyGB = round(IngestedGB / iff(DaysWithData > 0, DaysWithData, 1), 4)\n| project Table = DataType, IsEnabled = true, IngestedGB = round(IngestedGB, 4), AvgDailyGB;\nexpectedE5\n| join kind=leftouter (actual) on Table\n| project Section, Table, \n    IsEnabled = coalesce(IsEnabled, false),\n    IngestedGB = coalesce(IngestedGB, 0.0),\n    AvgDailyGB = coalesce(AvgDailyGB, 0.0)\n| extend Status = iff(IsEnabled, 'Enabled', 'Not Enabled')\n| project Section, Table, Status, IngestedGB, AvgDailyGB\n| order by Section asc, Table asc",
+        "size": 0,
+        "title": "E5 Security Benefit — Table Status",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "success",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not Enabled",
+                    "representation": "error",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "Default",
+                    "representation": "unknown",
+                    "text": "{0}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "IngestedGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgDailyGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Section",
+              "label": "Product Area"
+            },
+            {
+              "columnId": "Table",
+              "label": "Table"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            },
+            {
+              "columnId": "IngestedGB",
+              "label": "Total Ingested (GB)"
+            },
+            {
+              "columnId": "AvgDailyGB",
+              "label": "Avg Daily (GB)"
+            }
+          ]
+        }
+      },
+      "name": "e5-table-details"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let E5Licenses = toint('{E5Licenses}');\nlet freeAllowanceGBDay = todouble(E5Licenses * 5) / 1000.0;\nlet E5Tables = dynamic([\n    \"AADManagedIdentitySignInLogs\", \"AADNonInteractiveUserSignInLogs\", \"AADProvisioningLogs\",\n    \"AADRiskyUsers\", \"AADServicePrincipalRiskEvents\", \"AADServicePrincipalSignInLogs\",\n    \"AADUserRiskEvents\", \"ADFSSignInLogs\", \"AuditLogs\", \"SigninLogs\",\n    \"DeviceEvents\", \"DeviceFileCertificateInfo\", \"DeviceFileEvents\",\n    \"DeviceImageLoadEvents\", \"DeviceInfo\", \"DeviceLogonEvents\",\n    \"DeviceNetworkEvents\", \"DeviceNetworkInfo\", \"DeviceProcessEvents\", \"DeviceRegistryEvents\",\n    \"IdentityDirectoryEvents\", \"IdentityLogonEvents\", \"IdentityQueryEvents\",\n    \"EmailAttachmentInfo\", \"EmailEvents\", \"EmailPostDeliveryEvents\", \"EmailUrlInfo\",\n    \"CloudAppEvents\", \"AlertInfo\", \"AlertEvidence\"\n]);\nUsage\n| where TimeGenerated {TimeRange}\n| where DataType in (E5Tables)\n| summarize DailyGB = sum(Quantity) / 1000 by Day = startofday(TimeGenerated)\n| summarize AvgDailyGB = round(avg(DailyGB), 4), MaxDailyGB = round(max(DailyGB), 4)\n| extend \n    E5AllowanceGBDay = round(freeAllowanceGBDay, 4),\n    OverageGBDay = round(iff(AvgDailyGB > freeAllowanceGBDay, AvgDailyGB - freeAllowanceGBDay, 0.0), 4),\n    CoveredByE5 = iff(AvgDailyGB <= freeAllowanceGBDay, 'Fully covered', 'Overage detected')\n| project ['Avg Daily Ingestion (GB)'] = AvgDailyGB, ['Max Daily Ingestion (GB)'] = MaxDailyGB, ['E5 Daily Allowance (GB)'] = E5AllowanceGBDay, ['Daily Overage (GB)'] = OverageGBDay, ['Coverage Status'] = CoveredByE5",
+        "size": 0,
+        "title": "E5 Benefit — Daily Allowance vs Actual Ingestion",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Avg Daily Ingestion",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "Max Daily Ingestion",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "E5 Daily Allowance",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "Daily Overage",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "palette": "greenRed"
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "Coverage Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Fully covered",
+                    "representation": "success",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Overage detected",
+                    "representation": "warning",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "Default",
+                    "representation": "unknown",
+                    "text": "{0}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "name": "e5-allowance-summary"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## 3. Defender for Servers Plan 2 Benefit\n\nMachines protected by **Microsoft Defender for Servers Plan 2** receive a combined data ingestion benefit of **500 MB per VM per day** across all the following security data types. The allowance is the total across all VMs and applies to the sum of all tables below.\n\n| Table | Description |\n|---|---|\n| SecurityAlert | Security alerts generated by Defender for Servers |\n| SecurityBaseline | Security baseline assessment results |\n| SecurityBaselineSummary | Summary of security baseline assessments |\n| SecurityDetection | Security detections |\n| SecurityEvent | Windows Security Events collected via AMA or MMA |\n| WindowsFirewall | Windows Firewall events |\n| ProtectionStatus | Antimalware protection status |\n| Update | Update assessment results (when Update Management solution is not running or solution targeting is enabled) |\n| UpdateSummary | Update assessment summary (when Update Management solution is not running or solution targeting is enabled) |\n| MDCFileIntegrityMonitoringEvents | File Integrity Monitoring events from Defender for Cloud |\n| WindowsEvent | Windows Events collected via AMA (new format) |\n\nNote: SecurityAlert is also part of the free tier and is always free regardless of P2.\n\n> 📖 [Defender for Servers data ingestion benefit](https://learn.microsoft.com/en-us/azure/defender-for-cloud/faq-defender-for-servers#is-the-500-mb-of-free-data-ingestion-allowance-applied-to-an-entire-workspace-or-strictly-per-machine-)\n>\n> 📖 [Connect Windows security events to Sentinel](https://learn.microsoft.com/en-us/azure/sentinel/connect-windows-security-events)"
+      },
+      "name": "dfsp2-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let DfSP2Tables = dynamic([\"SecurityAlert\", \"SecurityBaseline\", \"SecurityBaselineSummary\", \"SecurityDetection\", \"SecurityEvent\", \"WindowsFirewall\", \"ProtectionStatus\", \"Update\", \"UpdateSummary\", \"MDCFileIntegrityMonitoringEvents\", \"WindowsEvent\"]);\nlet expectedDfS = datatable(Table: string, Description: string) [\n    \"SecurityAlert\", \"Security alerts (also free tier — always free)\",\n    \"SecurityBaseline\", \"Security baseline assessment results\",\n    \"SecurityBaselineSummary\", \"Security baseline summary\",\n    \"SecurityDetection\", \"Security detections\",\n    \"SecurityEvent\", \"Windows Security Events (MMA/AMA)\",\n    \"WindowsFirewall\", \"Windows Firewall events\",\n    \"ProtectionStatus\", \"Antimalware protection status\",\n    \"Update\", \"Update assessment (when Update Mgmt not running)\",\n    \"UpdateSummary\", \"Update assessment summary (when Update Mgmt not running)\",\n    \"MDCFileIntegrityMonitoringEvents\", \"File Integrity Monitoring events\",\n    \"WindowsEvent\", \"Windows Events (AMA new format)\"\n];\nlet actual = Usage\n| where TimeGenerated {TimeRange}\n| where DataType in (DfSP2Tables)\n| summarize IngestedGB = sum(Quantity) / 1000, DaysWithData = dcount(startofday(TimeGenerated)) by DataType\n| extend AvgDailyGB = round(IngestedGB / iff(DaysWithData > 0, DaysWithData, 1), 4)\n| project Table = DataType, IsEnabled = true, IngestedGB = round(IngestedGB, 4), AvgDailyGB;\nexpectedDfS\n| join kind=leftouter (actual) on Table\n| project Table, Description,\n    IsEnabled = coalesce(IsEnabled, false),\n    IngestedGB = coalesce(IngestedGB, 0.0),\n    AvgDailyGB = coalesce(AvgDailyGB, 0.0)\n| extend Status = iff(IsEnabled, 'Enabled', 'Not Enabled')\n| project Table, Description, Status, IngestedGB, AvgDailyGB\n| order by Table asc",
+        "size": 0,
+        "title": "Defender for Servers P2 — Table Status",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "success",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not Enabled",
+                    "representation": "error",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "Default",
+                    "representation": "unknown",
+                    "text": "{0}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "IngestedGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgDailyGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Table",
+              "label": "Table"
+            },
+            {
+              "columnId": "Description",
+              "label": "Description"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            },
+            {
+              "columnId": "IngestedGB",
+              "label": "Total Ingested (GB)"
+            },
+            {
+              "columnId": "AvgDailyGB",
+              "label": "Avg Daily (GB)"
+            }
+          ]
+        }
+      },
+      "name": "dfsp2-table-details"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let DfSP2VMs = toint('{DfSP2VMs}');\nlet freeAllowanceGBDay = todouble(DfSP2VMs * 500) / 1000.0;\nlet DfSP2Tables = dynamic([\"SecurityAlert\", \"SecurityBaseline\", \"SecurityBaselineSummary\", \"SecurityDetection\", \"SecurityEvent\", \"WindowsFirewall\", \"ProtectionStatus\", \"Update\", \"UpdateSummary\", \"MDCFileIntegrityMonitoringEvents\", \"WindowsEvent\"]);\nUsage\n| where TimeGenerated {TimeRange}\n| where DataType in (DfSP2Tables)\n| summarize DailyGB = sum(Quantity) / 1000 by Day = startofday(TimeGenerated)\n| summarize AvgDailyGB = round(avg(DailyGB), 4), MaxDailyGB = round(max(DailyGB), 4)\n| extend \n    P2AllowanceGBDay = round(freeAllowanceGBDay, 4),\n    OverageGBDay = round(iff(AvgDailyGB > freeAllowanceGBDay, AvgDailyGB - freeAllowanceGBDay, 0.0), 4),\n    CoveredByP2 = iff(AvgDailyGB <= freeAllowanceGBDay, 'Fully covered', 'Overage detected')\n| project ['Avg Daily Ingestion (GB)'] = AvgDailyGB, ['Max Daily Ingestion (GB)'] = MaxDailyGB, ['P2 Daily Allowance (GB)'] = P2AllowanceGBDay, ['Daily Overage (GB)'] = OverageGBDay, ['Coverage Status'] = CoveredByP2",
+        "size": 0,
+        "title": "P2 Benefit — Daily Allowance vs Actual Ingestion",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Avg Daily Ingestion",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "Max Daily Ingestion",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "P2 Daily Allowance",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "Daily Overage",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "palette": "greenRed"
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "Coverage Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Fully covered",
+                    "representation": "success",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Overage detected",
+                    "representation": "warning",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "Default",
+                    "representation": "unknown",
+                    "text": "{0}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "name": "dfsp2-allowance-summary"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## 4. Other Paid Connectors\n\nThese data sources and connectors are billable at standard Analytics or Auxiliary log ingestion rates. They add security value and coverage, but you should evaluate the importance and cost of each source.\n\nCommon examples include infrastructure logs (Syslog, Windows Events beyond the P2 benefit), CEF/syslog from firewalls and network appliances, cloud provider audit trails, and performance/diagnostic data.\n\n> 📖 [Microsoft Sentinel pricing](https://azure.microsoft.com/en-us/pricing/details/microsoft-sentinel/)\n>\n> 📖 [Plan costs and understand Microsoft Sentinel billing](https://learn.microsoft.com/en-us/azure/sentinel/billing?tabs=simplified%2Ccommitment-tiers)\n>\n> 📖 [Auxiliary Logs plan (data lake tier)](https://learn.microsoft.com/en-us/azure/sentinel/basic-logs-configure)"
+      },
+      "name": "paid-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let PaidTables = datatable(Table: string, Section: string, Description: string) [\n    \"CommonSecurityLog\", \"CSL\", \"CEF/Syslog security device logs (firewalls, proxies, etc.)\",\n    \"Syslog\", \"Infra\", \"Linux syslog events\",\n    \"AWSCloudTrail\", \"Cloud\", \"AWS CloudTrail audit logs\",\n    \"AWSVPCFlow\", \"Cloud\", \"AWS VPC Flow Logs\",\n    \"GCPAuditLogs\", \"Cloud\", \"Google Cloud Platform audit logs\",\n    \"W3CIISLog\", \"Infra\", \"IIS web server logs\",\n    \"DnsEvents\", \"Infra\", \"DNS query and response logs\",\n    \"AzureDiagnostics\", \"Azure\", \"Azure resource diagnostic logs\",\n    \"AzureMetrics\", \"Azure\", \"Azure resource metrics\",\n    \"ContainerLog\", \"Infra\", \"Container/Kubernetes logs\",\n    \"Perf\", \"Infra\", \"Performance counters\",\n    \"Event\", \"Infra\", \"Windows Event Log (non-security)\",\n    \"Heartbeat\", \"Infra\", \"Agent heartbeat/health data\",\n    \"VMConnection\", \"Infra\", \"VM connection tracking data\"\n];\nlet PaidTableNames = dynamic([\"CommonSecurityLog\", \"Syslog\", \"AWSCloudTrail\", \"AWSVPCFlow\", \"GCPAuditLogs\", \"W3CIISLog\", \"DnsEvents\", \"AzureDiagnostics\", \"AzureMetrics\", \"ContainerLog\", \"Perf\", \"Event\", \"Heartbeat\", \"VMConnection\"]);\nlet actual = Usage\n| where TimeGenerated {TimeRange}\n| where DataType in (PaidTableNames)\n| summarize IngestedGB = sum(Quantity) / 1000, DaysWithData = dcount(startofday(TimeGenerated)) by DataType\n| extend AvgDailyGB = round(IngestedGB / iff(DaysWithData > 0, DaysWithData, 1), 4)\n| project Table = DataType, IsEnabled = true, IngestedGB = round(IngestedGB, 4), AvgDailyGB;\nPaidTables\n| join kind=leftouter (actual) on Table\n| project Section, Table, Description,\n    IsEnabled = coalesce(IsEnabled, false),\n    IngestedGB = coalesce(IngestedGB, 0.0),\n    AvgDailyGB = coalesce(AvgDailyGB, 0.0)\n| extend Status = iff(IsEnabled, 'Enabled', 'Not Enabled')\n| project Section, Table, Description, Status, IngestedGB, AvgDailyGB\n| order by Section asc, Table asc",
+        "size": 0,
+        "title": "Other Paid Connectors — Table Status",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Enabled",
+                    "representation": "success",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not Enabled",
+                    "representation": "error",
+                    "text": "{0}"
+                  },
+                  {
+                    "operator": "Default",
+                    "representation": "unknown",
+                    "text": "{0}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "IngestedGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgDailyGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Section",
+              "label": "Section"
+            },
+            {
+              "columnId": "Table",
+              "label": "Table"
+            },
+            {
+              "columnId": "Description",
+              "label": "Description"
+            },
+            {
+              "columnId": "Status",
+              "label": "Status"
+            },
+            {
+              "columnId": "IngestedGB",
+              "label": "Total Ingested (GB)"
+            },
+            {
+              "columnId": "AvgDailyGB",
+              "label": "Avg Daily (GB)"
+            }
+          ]
+        }
+      },
+      "name": "paid-table-details"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Additional: All Tables Ingestion Breakdown\n\nThis section shows **all tables** currently ingesting data into the workspace, regardless of category, so you can identify any unmapped or unexpected data sources."
+      },
+      "name": "all-tables-header"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let FreeTierTables = dynamic([\"AzureActivity\", \"SecurityAlert\", \"OfficeActivity\", \"SentinelHealth\"]);\nlet E5Tables = dynamic([\n    \"AADManagedIdentitySignInLogs\", \"AADNonInteractiveUserSignInLogs\", \"AADProvisioningLogs\",\n    \"AADRiskyUsers\", \"AADServicePrincipalRiskEvents\", \"AADServicePrincipalSignInLogs\",\n    \"AADUserRiskEvents\", \"ADFSSignInLogs\", \"AuditLogs\", \"SigninLogs\",\n    \"DeviceEvents\", \"DeviceFileCertificateInfo\", \"DeviceFileEvents\",\n    \"DeviceImageLoadEvents\", \"DeviceInfo\", \"DeviceLogonEvents\",\n    \"DeviceNetworkEvents\", \"DeviceNetworkInfo\", \"DeviceProcessEvents\", \"DeviceRegistryEvents\",\n    \"IdentityDirectoryEvents\", \"IdentityLogonEvents\", \"IdentityQueryEvents\",\n    \"EmailAttachmentInfo\", \"EmailEvents\", \"EmailPostDeliveryEvents\", \"EmailUrlInfo\",\n    \"CloudAppEvents\", \"AlertInfo\", \"AlertEvidence\"\n]);\nlet DfSP2Tables = dynamic([\"SecurityBaseline\", \"SecurityBaselineSummary\", \"SecurityDetection\", \"SecurityEvent\", \"WindowsFirewall\", \"ProtectionStatus\", \"Update\", \"UpdateSummary\", \"MDCFileIntegrityMonitoringEvents\", \"WindowsEvent\"]);\nUsage\n| where TimeGenerated {TimeRange}\n| summarize IngestedGB = round(sum(Quantity) / 1000, 4), DaysWithData = dcount(startofday(TimeGenerated)) by DataType\n| extend AvgDailyGB = round(IngestedGB / iff(DaysWithData > 0, DaysWithData, 1), 4)\n| extend Category = case(\n    DataType in (FreeTierTables), \"1. Free Tier\",\n    DataType in (E5Tables), \"2. E5 Security Benefit\",\n    DataType in (DfSP2Tables), \"3. Defender for Servers P2\",\n    \"4. Other / Unmapped\"\n  )\n| project Category, DataType, IngestedGB, AvgDailyGB\n| order by IngestedGB desc",
+        "size": 0,
+        "title": "All Ingesting Tables — Categorized",
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "IngestedGB",
+              "formatter": 3,
+              "formatOptions": {
+                "palette": "blue"
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            },
+            {
+              "columnMatch": "AvgDailyGB",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "minimumFractionDigits": 2,
+                  "maximumFractionDigits": 4
+                }
+              }
+            }
+          ],
+          "labelSettings": [
+            {
+              "columnId": "Category",
+              "label": "Category"
+            },
+            {
+              "columnId": "DataType",
+              "label": "Table"
+            },
+            {
+              "columnId": "IngestedGB",
+              "label": "Total Ingested (GB)"
+            },
+            {
+              "columnId": "AvgDailyGB",
+              "label": "Avg Daily (GB)"
+            }
+          ]
+        }
+      },
+      "name": "all-tables-breakdown"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "---\n## Reference & Documentation\n\n| Topic | Link |\n|---|---|\n| Free data sources in Sentinel | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/sentinel/billing?tabs=simplified%2Ccommitment-tiers#free-data-sources) |\n| E5 Security benefit for Sentinel | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/sentinel/billing?tabs=simplified%2Ccommitment-tiers#microsoft-365-e5-a5-f5-and-g5-customers) |\n| E5 eligible tables list | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/sentinel/microsoft-365-defender-sentinel-integration#tables-eligible-for-the-microsoft-365-e5-benefit) |\n| Defender for Servers P2 benefit (500 MB/VM/day) | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/defender-for-cloud/faq-defender-for-servers#is-the-500-mb-of-free-data-ingestion-allowance-applied-to-an-entire-workspace-or-strictly-per-machine-) |\n| Sentinel pricing | [Azure Pricing](https://azure.microsoft.com/en-us/pricing/details/microsoft-sentinel/) |\n| Plan costs and billing | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/sentinel/billing?tabs=simplified%2Ccommitment-tiers) |\n| Auxiliary Logs plan (data lake) | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/sentinel/basic-logs-configure) |\n| Connect Defender XDR to Sentinel | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/sentinel/connect-microsoft-365-defender) |\n| Ingestion-time transformations | [Microsoft Learn](https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/data-collection-transformations) |"
+      },
+      "name": "reference-docs"
+    }
+  ],
+  "fallbackResourceIds": [
+    "/subscriptions/5acda791-8084-416f-a083-343dd37d8be3/resourcegroups/rg-sentinel-lab/providers/microsoft.operationalinsights/workspaces/law-sentinel-xdr-lab"
+  ],
+  "fromTemplateId": "sentinel-DataConnectorOverview",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
